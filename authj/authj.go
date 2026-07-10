@@ -63,11 +63,11 @@ func Authorizer(e casbin.IEnforcer, opts ...Option) func(http.Handler) http.Hand
 	cfg := Config{
 		func(w http.ResponseWriter, r *http.Request, err error) {
 			w.WriteHeader(http.StatusInternalServerError)
-			w.Write([]byte(`{"code": 500, "message": "Permission validation errors occur!"}`))
+			_, _ = w.Write([]byte(`{"code": 500, "message": "Permission validation errors occur!"}`))
 		},
 		func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusForbidden)
-			w.Write([]byte(`{"code": 403, "message": "Permission denied!"}`))
+			_, _ = w.Write([]byte(`{"code": 403, "message": "Permission denied!"}`))
 		},
 		func(w http.ResponseWriter, r *http.Request) bool { return false },
 		func(w http.ResponseWriter, r *http.Request) string { return "" },

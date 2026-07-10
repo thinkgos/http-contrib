@@ -54,6 +54,5 @@ func (a *Auth[T]) Middleware(opts ...Option) func(next http.Handler) http.Handle
 			}
 			next.ServeHTTP(w, r)
 		})
-
 	}
 }

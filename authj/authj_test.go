@@ -49,7 +49,7 @@ func (p Pipeline) Handle(final http.Handler) http.Handler {
 }
 
 func (p Pipeline) HandleFunc(final http.HandlerFunc) http.Handler {
-	return p.Handle(http.HandlerFunc(final))
+	return p.Handle(final)
 }
 
 func ContextSubject(subject string) func(next http.Handler) http.Handler {
@@ -123,13 +123,12 @@ func TestRBAC(t *testing.T) {
 			Authorizer(e,
 				WithSubject(Subject),
 				WithErrorFallback(func(w http.ResponseWriter, r *http.Request, err error) {
-
 					w.WriteHeader(http.StatusInternalServerError)
-					w.Write([]byte(`{"code": 500, "message": "Permission validation errors occur!"}`))
+					_, _ = w.Write([]byte(`{"code": 500, "message": "Permission validation errors occur!"}`))
 				}),
 				WithForbiddenFallback(func(w http.ResponseWriter, r *http.Request) {
 					w.WriteHeader(http.StatusForbidden)
-					w.Write([]byte(`{"code": 403, "message": "Permission denied!"}`))
+					_, _ = w.Write([]byte(`{"code": 403, "message": "Permission denied!"}`))
 				}),
 			),
 		).HandleFunc(Success),
@@ -165,11 +164,11 @@ func TestSkipAuthentication(t *testing.T) {
 				WithSubject(Subject),
 				WithErrorFallback(func(w http.ResponseWriter, r *http.Request, err error) {
 					w.WriteHeader(http.StatusInternalServerError)
-					w.Write([]byte(`{"code": 500, "message": "Permission validation errors occur!"}`))
+					_, _ = w.Write([]byte(`{"code": 500, "message": "Permission validation errors occur!"}`))
 				}),
 				WithForbiddenFallback(func(w http.ResponseWriter, r *http.Request) {
 					w.WriteHeader(http.StatusForbidden)
-					w.Write([]byte(`{"code": 403, "message": "Permission denied!"}`))
+					_, _ = w.Write([]byte(`{"code": 403, "message": "Permission denied!"}`))
 				}),
 				WithSkipAuthentication(func(w http.ResponseWriter, r *http.Request) bool {
 					return r.Method == http.MethodGet && r.URL.Path == "/skip/authentication"
