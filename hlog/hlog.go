@@ -161,7 +161,7 @@ func newConfig() Config {
 // Requests with errors are logged using logger.Error().
 // Requests without errors are logged using logger.Info().
 func Logging(log *logger.Log, opts ...Option) func(http.Handler) http.Handler {
-	log.AddCallerSkipPackage("github.com/thinkgos/gin-contrib")
+	log.AddCallerSkipPackage("github.com/thinkgos/http-contrib")
 	cfg := newConfig()
 	for _, opt := range opts {
 		opt(&cfg)
@@ -176,7 +176,7 @@ func Logging(log *logger.Log, opts ...Option) func(http.Handler) http.Handler {
 			reqBody := "skip request body"
 			debugCurl := ""
 			hasSkipRequestBody := skipRequestBody(w, r) || cfg.skipRequestBody(w, r)
-			wrapWriter := &bodyWriter{ResponseWriter: w, dupBody: nil}
+			wrapWriter := &bodyWriter{ResponseWriter: w, dupBody: nil, status: http.StatusOK}
 			w = wrapWriter
 
 			if cfg.enableBody.Load() {
@@ -303,7 +303,7 @@ func Recovery(log *logger.Log, stack bool, opts ...Option) func(http.Handler) ht
 type bodyWriter struct {
 	http.ResponseWriter
 	dupBody *strings.Builder
-	code    int
+	status  int
 }
 
 func (w *bodyWriter) Write(b []byte) (int, error) {
@@ -313,9 +313,9 @@ func (w *bodyWriter) Write(b []byte) (int, error) {
 	return w.ResponseWriter.Write(b)
 }
 func (w *bodyWriter) WriteHeader(code int) {
-	w.code = code
+	w.status = code
 	w.ResponseWriter.WriteHeader(code)
 }
 func (w *bodyWriter) Status() int {
-	return w.code
+	return w.status
 }

@@ -111,7 +111,7 @@ func (l *Logger) Trace(ctx context.Context, begin time.Time, f func() (string, i
 		l.LogLevel >= gormlogger.Warn &&
 		l.log.Enabled(logger.WarnLevel):
 		sql, rows := f()
-		l.log.OnErrorContext(ctx).
+		l.log.OnWarnContext(ctx).
 			Error(err).
 			String("slow!!!", fmt.Sprintf("SLOW SQL >= %v", l.SlowThreshold)).
 			Duration("latency", elapsed).

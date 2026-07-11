@@ -7,7 +7,7 @@ require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/stretchr/testify v1.11.1
 	github.com/thinkgos/httpcurl v0.1.2
-	github.com/thinkgos/logger v1.2.0
+	github.com/thinkgos/logger v1.2.1
 	go.opentelemetry.io/otel/trace v1.44.0
 	gorm.io/gorm v1.31.2
 )

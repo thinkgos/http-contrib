@@ -184,12 +184,18 @@ func (a *Auth[T]) generateToken(val *Claims[T], timeout time.Duration) (string, 
 	}
 	now := time.Now()
 	expiresAt := now.Add(timeout)
-	val.Issuer = a.issuer
-	val.ExpiresAt = jwt.NewNumericDate(expiresAt)
-	val.NotBefore = jwt.NewNumericDate(now)
-	val.IssuedAt = jwt.NewNumericDate(now)
-	val.Subject = sub
-	token, err := jwt.NewWithClaims(a.signingMethod, val).
+	token, err := jwt.NewWithClaims(a.signingMethod, Claims[T]{
+		RegisteredClaims: jwt.RegisteredClaims{
+			Issuer:    a.issuer,
+			Subject:   sub,
+			Audience:  val.Audience,
+			ExpiresAt: jwt.NewNumericDate(expiresAt),
+			NotBefore: jwt.NewNumericDate(now),
+			IssuedAt:  jwt.NewNumericDate(now),
+			ID:        val.ID,
+		},
+		Meta: val.Meta,
+	}).
 		SignedString(a.encodeKey)
 	return token, expiresAt, err
 }
