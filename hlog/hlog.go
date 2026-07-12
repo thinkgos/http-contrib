@@ -13,7 +13,6 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/thinkgos/httpcurl"
 	"github.com/thinkgos/logger"
 )
 
@@ -87,16 +86,6 @@ func WithUseLoggerLevel(f func(w http.ResponseWriter, r *http.Request, statusCod
 	}
 }
 
-func WithEnableDebugCurl(b bool) Option {
-	return func(c *Config) {
-		if b {
-			c.debugCurl = httpcurl.New()
-		} else {
-			c.debugCurl = nil
-		}
-	}
-}
-
 // Config logger/recover config
 type Config struct {
 	customFields []func(w http.ResponseWriter, r *http.Request) logger.Field
@@ -112,9 +101,8 @@ type Config struct {
 	// 	logger.WarnLevel: when status >= http.StatusBadRequest && status <= http.StatusUnavailableForLegalReasons
 	//  logger.InfoLevel: otherwise.
 	useLoggerLevel func(w http.ResponseWriter, r *http.Request, statusCode int) logger.Level
-	enableBody     *atomic.Bool       // enable request/response body
-	limit          int                // <=0: mean not limit
-	debugCurl      *httpcurl.HttpCurl // debug curl
+	enableBody     *atomic.Bool // enable request/response body
+	limit          int          // <=0: mean not limit
 }
 
 func skipRequestBody(w http.ResponseWriter, r *http.Request) bool {
@@ -174,7 +162,6 @@ func Logging(log *logger.Log, opts ...Option) func(http.Handler) http.Handler {
 			}
 			respBodyBuilder := &strings.Builder{}
 			reqBody := "skip request body"
-			debugCurl := ""
 			hasSkipRequestBody := skipRequestBody(w, r) || cfg.skipRequestBody(w, r)
 			wrapWriter := &bodyWriter{ResponseWriter: w, dupBody: nil, status: http.StatusOK}
 			w = wrapWriter
@@ -197,9 +184,6 @@ func Logging(log *logger.Log, opts ...Option) func(http.Handler) http.Handler {
 					}
 				}
 			}
-			if !hasSkipRequestBody && cfg.debugCurl != nil {
-				debugCurl, _ = cfg.debugCurl.IntoCurl(r)
-			}
 
 			start := time.Now()
 			// some evil middlewares modify this values
@@ -217,25 +201,22 @@ func Logging(log *logger.Log, opts ...Option) func(http.Handler) http.Handler {
 					// String("ip", c.ClientIP()).
 					String("user-agent", r.UserAgent()).
 					Duration("latency", time.Since(start)).
-					HookFunc(func(e *logger.Event) {
-						if cfg.enableBody.Load() {
-							respBody := "skip response body"
-							// response body must inspect here, because we know only after write response body.
-							if hasSkipResponseBody := skipResponseBody(w, r) || cfg.skipResponseBody(w, r); !hasSkipResponseBody {
-								if cfg.limit > 0 && respBodyBuilder.Len() >= cfg.limit {
-									respBody = "larger response body"
-								} else {
-									respBody = respBodyBuilder.String()
-								}
+					HookFuncIf(cfg.enableBody.Load(), func(e *logger.Event) {
+						respBody := "skip response body"
+						// response body must inspect here, because we know only after write response body.
+						if hasSkipResponseBody := skipResponseBody(w, r) || cfg.skipResponseBody(w, r); !hasSkipResponseBody {
+							if cfg.limit > 0 && respBodyBuilder.Len() >= cfg.limit {
+								respBody = "larger response body"
+							} else {
+								respBody = respBodyBuilder.String()
 							}
-							e.String("requestBody", reqBody).
-								String("responseBody", respBody)
 						}
+						e.String("requestBody", reqBody).
+							String("responseBody", respBody)
+					}).
+					HookFunc(func(e *logger.Event) {
 						for _, fieldFunc := range cfg.customFields {
 							e.Fields(fieldFunc(w, r))
-						}
-						if debugCurl != "" {
-							e.String("curl", debugCurl)
 						}
 					}).
 					Msg("logging")
@@ -287,9 +268,9 @@ func Recovery(log *logger.Log, stack bool, opts ...Option) func(http.Handler) ht
 							for _, fieldFunc := range cfg.customFields {
 								e.Fields(fieldFunc(w, r))
 							}
-							if stack {
-								e.ByteString("stack", debug.Stack())
-							}
+						}).
+						HookFuncIf(stack, func(e *logger.Event) {
+							e.ByteString("stack", debug.Stack())
 						}).
 						Msg("recovery from panic")
 					w.WriteHeader(http.StatusInternalServerError)
