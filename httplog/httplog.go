@@ -193,11 +193,9 @@ func Logging(log *logger.Log, opts ...Option) func(http.Handler) http.Handler {
 						if err := r.Context().Err(); errors.Is(err, context.Canceled) {
 							e.Error(ErrClientAborted).String("error.type", "ClientAborted")
 						}
-
 					}).
 					Fields(getFields(r.Context())...).
 					Msg("logging")
-
 			}()
 			next.ServeHTTP(ww, r)
 		})
@@ -220,7 +218,7 @@ func (w *bodyWriter) Status() int { return w.status }
 
 func (w *bodyWriter) Write(b []byte) (int, error) {
 	if w.tee != nil {
-		w.tee.Write(b)
+		_, _ = w.tee.Write(b)
 	}
 	return w.ResponseWriter.Write(b)
 }
