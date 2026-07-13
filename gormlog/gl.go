@@ -36,7 +36,7 @@ func SetGormDBLogger(db *gorm.DB, l gormlogger.Interface) {
 func New(log *logger.Log, opts ...Option) gormlogger.Interface {
 	log.AddCallerSkipPackage(
 		"gorm.io/gorm",
-		"github.com/thinkgos/admin-go/pkg/core/gormlog",
+		"github.com/thinkgos/http-contrib/gormlog",
 	)
 	l := &Logger{
 		log: log,
