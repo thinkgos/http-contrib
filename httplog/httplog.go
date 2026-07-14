@@ -14,6 +14,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/thinkgos/logger"
 )
 
@@ -89,7 +90,8 @@ func Logging(log *logger.Log, opts ...Option) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			r = r.WithContext(context.WithValue(r.Context(), ctxKeyLogField{}, &[]logger.Field{}))
-			ww := newWrapResponseWriter(w)
+
+			ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
 			respBody := &strings.Builder{}
 			reqBody := &strings.Builder{}
 
@@ -200,31 +202,6 @@ func Logging(log *logger.Log, opts ...Option) func(http.Handler) http.Handler {
 			next.ServeHTTP(ww, r)
 		})
 	}
-}
-
-type bodyWriter struct {
-	http.ResponseWriter
-	tee    io.Writer
-	status int
-}
-
-func newWrapResponseWriter(w http.ResponseWriter) *bodyWriter {
-	return &bodyWriter{ResponseWriter: w, tee: nil, status: http.StatusOK}
-}
-
-func (w *bodyWriter) Tee(tee io.Writer) { w.tee = tee }
-
-func (w *bodyWriter) Status() int { return w.status }
-
-func (w *bodyWriter) Write(b []byte) (int, error) {
-	if w.tee != nil {
-		_, _ = w.tee.Write(b)
-	}
-	return w.ResponseWriter.Write(b)
-}
-func (w *bodyWriter) WriteHeader(code int) {
-	w.status = code
-	w.ResponseWriter.WriteHeader(code)
 }
 
 func extractHeaderField(header http.Header, headers []string) []logger.Field {
