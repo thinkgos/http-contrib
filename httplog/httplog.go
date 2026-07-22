@@ -186,7 +186,7 @@ func Logging(log *logger.Log, opts ...Option) func(http.Handler) http.Handler {
 							e.Dict("response.headers", extractHeaderField(w.Header(), cfg.logResponseHeaders)...)
 						}
 						if hasLogResponseBody {
-							if cfg.logBodyLimit <= 0 || reqBody.Len() <= cfg.logBodyLimit {
+							if cfg.logBodyLimit <= 0 || ww.BytesWritten() <= cfg.logBodyLimit {
 								e.String("response.body", respBody.String())
 							} else {
 								e.String("response.body", respBody.String()[:cfg.logBodyLimit]+"... [trimmed]")
