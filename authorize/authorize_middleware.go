@@ -43,11 +43,12 @@ func WithUnauthorizedFallback(f func(http.ResponseWriter, *http.Request, error))
 
 func (a *Auth[T]) Middleware(opts ...Option) func(next http.Handler) http.Handler {
 	opt := &options{
+		skip:                  func(*http.Request) bool { return false },
+		afterAuthorizeSuccess: func(*http.Request) error { return nil },
 		unauthorizedFallback: func(w http.ResponseWriter, r *http.Request, err error) {
 			w.WriteHeader(http.StatusUnauthorized)
 			_, _ = w.Write([]byte(err.Error()))
 		},
-		skip: func(*http.Request) bool { return false },
 	}
 	for _, f := range opts {
 		f(opt)
