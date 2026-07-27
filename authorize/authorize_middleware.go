@@ -9,15 +9,25 @@ type Option func(*options)
 
 // options is a Middleware option
 type options struct {
-	skip                 func(http.ResponseWriter, *http.Request) bool
-	unauthorizedFallback func(http.ResponseWriter, *http.Request, error)
+	skip                  func(*http.Request) bool
+	afterAuthorizeSuccess func(*http.Request) error
+	unauthorizedFallback  func(http.ResponseWriter, *http.Request, error)
 }
 
 // WithSkip set skip func
-func WithSkip(f func(http.ResponseWriter, *http.Request) bool) Option {
+func WithSkip(f func(*http.Request) bool) Option {
 	return func(o *options) {
 		if f != nil {
 			o.skip = f
+		}
+	}
+}
+
+// WithAfterAuthorizeSuccess set after authorize success func
+func WithAfterAuthorizeSuccess(f func(*http.Request) error) Option {
+	return func(o *options) {
+		if f != nil {
+			o.afterAuthorizeSuccess = f
 		}
 	}
 }
@@ -32,25 +42,30 @@ func WithUnauthorizedFallback(f func(http.ResponseWriter, *http.Request, error))
 }
 
 func (a *Auth[T]) Middleware(opts ...Option) func(next http.Handler) http.Handler {
-	o := &options{
+	opt := &options{
 		unauthorizedFallback: func(w http.ResponseWriter, r *http.Request, err error) {
 			w.WriteHeader(http.StatusUnauthorized)
 			_, _ = w.Write([]byte(err.Error()))
 		},
-		skip: func(http.ResponseWriter, *http.Request) bool { return false },
+		skip: func(*http.Request) bool { return false },
 	}
-	for _, opt := range opts {
-		opt(o)
+	for _, f := range opts {
+		f(opt)
 	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if !o.skip(w, r) {
+			if !opt.skip(r) {
 				acc, err := a.ParseFromRequest(r)
 				if err != nil {
-					o.unauthorizedFallback(w, r, err)
+					opt.unauthorizedFallback(w, r, err)
 					return
 				}
 				r = r.WithContext(NewContext(r.Context(), acc))
+				err = opt.afterAuthorizeSuccess(r)
+				if err != nil {
+					opt.unauthorizedFallback(w, r, err)
+					return
+				}
 			}
 			next.ServeHTTP(w, r)
 		})

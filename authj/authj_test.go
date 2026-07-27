@@ -17,7 +17,7 @@ import (
 type ctxAuthKey struct{}
 
 // Subject returns the value associated with this context for subjectCtxKey,
-func Subject(w http.ResponseWriter, r *http.Request) string {
+func Subject(r *http.Request) string {
 	val, _ := r.Context().Value(ctxAuthKey{}).(string)
 	return val
 }
@@ -161,6 +161,9 @@ func TestSkipAuthentication(t *testing.T) {
 			ContextSubject("cathy"),
 			Authorizer(e,
 				WithSubject(Subject),
+				WithSkipPermission(func(r *http.Request) bool {
+					return r.Method == http.MethodGet && r.URL.Path == "/skip/authentication"
+				}),
 				WithErrorFallback(func(w http.ResponseWriter, r *http.Request, err error) {
 					w.WriteHeader(http.StatusInternalServerError)
 					_, _ = w.Write([]byte(`{"code": 500, "message": "Permission validation errors occur!"}`))
@@ -168,9 +171,6 @@ func TestSkipAuthentication(t *testing.T) {
 				WithForbiddenFallback(func(w http.ResponseWriter, r *http.Request) {
 					w.WriteHeader(http.StatusForbidden)
 					_, _ = w.Write([]byte(`{"code": 403, "message": "Permission denied!"}`))
-				}),
-				WithSkipAuthentication(func(w http.ResponseWriter, r *http.Request) bool {
-					return r.Method == http.MethodGet && r.URL.Path == "/skip/authentication"
 				}),
 			),
 		).HandleFunc(Success),

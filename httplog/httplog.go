@@ -73,7 +73,7 @@ func logResponseBody(_r *http.Request) bool {
 // Requests without errors are logged using logger.Info().
 func Logging(log *logger.Log, opts ...Option) func(http.Handler) http.Handler {
 	log.AddCallerSkipPackage("github.com/thinkgos/http-contrib")
-	cfg := Config{
+	opt := Config{
 		skipLogging:           func(r *http.Request) bool { return false },
 		enableLogBody:         &atomic.Bool{},
 		logBodyLimit:          4096,
@@ -84,8 +84,8 @@ func Logging(log *logger.Log, opts ...Option) func(http.Handler) http.Handler {
 		logRecordResponseBody: func(r *http.Request) bool { return true },
 		stack:                 false,
 	}
-	for _, opt := range opts {
-		opt(&cfg)
+	for _, f := range opts {
+		f(&opt)
 	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -95,8 +95,9 @@ func Logging(log *logger.Log, opts ...Option) func(http.Handler) http.Handler {
 			respBody := &strings.Builder{}
 			reqBody := &strings.Builder{}
 
-			hasLogRequestBody := cfg.enableLogBody.Load() && logRequestBody(r) && cfg.logRequestBody(r)
-			hasLogResponseBody := cfg.enableLogBody.Load() && logResponseBody(r) && cfg.logRecordResponseBody(r)
+			hasLogging := !opt.skipLogging(r)
+			hasLogRequestBody := hasLogging && opt.enableLogBody.Load() && logRequestBody(r) && opt.logRequestBody(r)
+			hasLogResponseBody := hasLogging && opt.enableLogBody.Load() && logResponseBody(r) && opt.logRecordResponseBody(r)
 			if hasLogRequestBody {
 				r.Body = io.NopCloser(io.TeeReader(r.Body, reqBody))
 			}
@@ -135,7 +136,7 @@ func Logging(log *logger.Log, opts ...Option) func(http.Handler) http.Handler {
 					log.OnErrorContext(r.Context()).
 						Any("error", err).
 						ByteString("request", httpRequest).
-						HookFuncIf(cfg.stack, func(e *logger.Event) {
+						HookFuncIf(opt.stack, func(e *logger.Event) {
 							e.ByteString("stack", debug.Stack())
 						}).
 						Msg("recovery from panic")
@@ -143,7 +144,7 @@ func Logging(log *logger.Log, opts ...Option) func(http.Handler) http.Handler {
 				}
 
 				// logging
-				if cfg.skipLogging(r) {
+				if !hasLogging {
 					return
 				}
 				statusCode := ww.Status()
@@ -159,7 +160,6 @@ func Logging(log *logger.Log, opts ...Option) func(http.Handler) http.Handler {
 					level = logger.DebugLevel
 				}
 
-				hasLogResponseBody := cfg.enableLogBody.Load() && logResponseBody(r) && cfg.logRecordResponseBody(r)
 				log.OnLevelContext(r.Context(), level).
 					Int("status", ww.Status()).
 					String("method", r.Method).
@@ -168,28 +168,28 @@ func Logging(log *logger.Log, opts ...Option) func(http.Handler) http.Handler {
 					String("user-agent", r.UserAgent()).
 					Duration("latency", time.Since(start)).
 					HookFunc(func(e *logger.Event) {
-						if len(cfg.logRequestHeaders) > 0 {
-							e.Dict("request.headers", extractHeaderField(r.Header, cfg.logRequestHeaders)...)
+						if len(opt.logRequestHeaders) > 0 {
+							e.Dict("request.headers", extractHeaderField(r.Header, opt.logRequestHeaders)...)
 						}
 						if hasLogRequestBody {
 							n, _ := io.Copy(io.Discard, r.Body)
 							if n > 0 {
 								e.Int64("request.unread-bytes", n)
 							}
-							if cfg.logBodyLimit <= 0 || reqBody.Len() <= cfg.logBodyLimit {
+							if opt.logBodyLimit <= 0 || reqBody.Len() <= opt.logBodyLimit {
 								e.String("request.body", reqBody.String())
 							} else {
-								e.String("request.body", reqBody.String()[:cfg.logBodyLimit]+"... [trimmed]")
+								e.String("request.body", reqBody.String()[:opt.logBodyLimit]+"... [trimmed]")
 							}
 						}
-						if len(cfg.logResponseHeaders) > 0 {
-							e.Dict("response.headers", extractHeaderField(w.Header(), cfg.logResponseHeaders)...)
+						if len(opt.logResponseHeaders) > 0 {
+							e.Dict("response.headers", extractHeaderField(w.Header(), opt.logResponseHeaders)...)
 						}
 						if hasLogResponseBody {
-							if cfg.logBodyLimit <= 0 || ww.BytesWritten() <= cfg.logBodyLimit {
+							if opt.logBodyLimit <= 0 || ww.BytesWritten() <= opt.logBodyLimit {
 								e.String("response.body", respBody.String())
 							} else {
-								e.String("response.body", respBody.String()[:cfg.logBodyLimit]+"... [trimmed]")
+								e.String("response.body", respBody.String()[:opt.logBodyLimit]+"... [trimmed]")
 							}
 						}
 						if err := r.Context().Err(); errors.Is(err, context.Canceled) {
