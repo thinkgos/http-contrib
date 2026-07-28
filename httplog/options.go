@@ -79,3 +79,10 @@ func WithLogResponseBody(f func(r *http.Request) bool) Option {
 		}
 	}
 }
+
+// WithStack optional custom record stack option.
+func WithStack(b bool) Option {
+	return func(c *Config) {
+		c.stack = b
+	}
+}
