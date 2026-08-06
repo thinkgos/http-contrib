@@ -55,8 +55,8 @@ func WithLogRequestHeaders(headers []string) Option {
 	}
 }
 
-// WithLogRecordRequestBody optional custom skip request body logging option.
-func WithLogRecordRequestBody(f func(r *http.Request) bool) Option {
+// WithLogRequestBody optional custom skip request body logging option.
+func WithLogRequestBody(f func(r *http.Request) bool) Option {
 	return func(c *Config) {
 		if f != nil {
 			c.logRequestBody = f
