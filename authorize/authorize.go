@@ -114,8 +114,8 @@ func New[T any](c Config) (*Auth[T], error) {
 // Timeout token valid time
 func (a *Auth[T]) Timeout() time.Duration { return a.timeout }
 
-// MaxTimeout refresh timeout
-func (a *Auth[T]) MaxTimeout() time.Duration { return a.refreshTimeout }
+// RefreshTimeout refresh timeout
+func (a *Auth[T]) RefreshTimeout() time.Duration { return a.refreshTimeout }
 
 // ParseToken parse token
 func (a *Auth[T]) ParseToken(tokenString string) (*Claims[T], error) {
@@ -152,12 +152,12 @@ func (a *Auth[T]) ParseToken(tokenString string) (*Claims[T], error) {
 
 // GenerateToken generate token
 func (a *Auth[T]) GenerateToken(val *Claims[T]) (string, time.Time, error) {
-	return a.generateToken(val, a.timeout)
+	return a.Generate(val, a.timeout)
 }
 
 // GenerateRefreshToken generate refresh token
 func (a *Auth[T]) GenerateRefreshToken(val *Claims[T]) (string, time.Time, error) {
-	return a.generateToken(val, a.refreshTimeout)
+	return a.Generate(val, a.refreshTimeout)
 }
 
 // ExtractToken extract token from http request
@@ -174,7 +174,7 @@ func (a *Auth[T]) ParseFromRequest(r *http.Request) (*Claims[T], error) {
 	return a.ParseToken(token)
 }
 
-func (a *Auth[T]) generateToken(val *Claims[T], timeout time.Duration) (string, time.Time, error) {
+func (a *Auth[T]) Generate(val *Claims[T], timeout time.Duration) (string, time.Time, error) {
 	sub, err := Marshal(&TokenSubject{
 		Sub:    val.Subject,
 		ConnId: val.ID,
