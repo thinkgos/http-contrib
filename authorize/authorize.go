@@ -18,9 +18,9 @@ type Claims[T any] struct {
 // Config Auth config
 type Config struct {
 	// Timeout token valid time
-	// if timeout <= refreshTimeout, refreshTimeout = timeout + 30 * time.Minute
 	Timeout time.Duration
 	// RefreshTimeout refresh token valid time.
+	// if refreshTimeout <= timeout, refreshTimeout = timeout + 30 * time.Minute
 	RefreshTimeout time.Duration
 	// Lookup used to extract token from the http request
 	// lookup is a string in the form of "<source>:<name>[:<prefix>]" that is used
@@ -66,7 +66,7 @@ func New[T any](c Config) (*Auth[T], error) {
 		refreshTimeout: c.RefreshTimeout,
 		lookup:         NewLookup(c.Lookup),
 	}
-	if mw.timeout <= mw.refreshTimeout {
+	if mw.refreshTimeout <= mw.timeout {
 		mw.refreshTimeout = mw.timeout + 30*time.Minute
 	}
 	switch c.Algorithm {

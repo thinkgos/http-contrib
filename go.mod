@@ -4,7 +4,7 @@ go 1.26
 
 require (
 	github.com/casbin/casbin/v3 v3.11.0
-	github.com/go-chi/chi/v5 v5.3.1
+	github.com/go-chi/chi/v5 v5.3.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/stretchr/testify v1.12.1
 	github.com/thinkgos/logger v1.2.1
