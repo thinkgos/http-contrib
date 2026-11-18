@@ -6,14 +6,14 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/thinkgos/logger"
+	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
 )
 
 // Logger logger for gorm2
 type Logger struct {
-	log *logger.Log
+	log zerolog.Logger
 	gormlogger.Config
 }
 
@@ -33,11 +33,7 @@ func SetGormDBLogger(db *gorm.DB, l gormlogger.Interface) {
 }
 
 // New logger form gorm2
-func New(log *logger.Log, opts ...Option) gormlogger.Interface {
-	log.AddCallerSkipPackage(
-		"gorm.io/gorm",
-		"github.com/thinkgos/http-contrib",
-	)
+func New(log zerolog.Logger, opts ...Option) gormlogger.Interface {
 	l := &Logger{
 		log: log,
 		Config: gormlogger.Config{
@@ -62,22 +58,23 @@ func (l *Logger) LogMode(level gormlogger.LogLevel) gormlogger.Interface {
 
 // Info print info
 func (l *Logger) Info(ctx context.Context, msg string, args ...any) {
-	if l.LogLevel >= gormlogger.Info && l.log.Enabled(logger.InfoLevel) {
-		l.log.OnDebugContext(ctx).Printf(msg, args...)
+	if l.LogLevel >= gormlogger.Info {
+		// 保持原行为: gorm Info 消息打到 debug 等级; 等级过滤由 zerolog 在创建事件时完成
+		l.log.Debug().Ctx(ctx).Msgf(msg, args...)
 	}
 }
 
 // Warn print warn messages
 func (l *Logger) Warn(ctx context.Context, msg string, args ...any) {
-	if l.LogLevel >= gormlogger.Warn && l.log.Enabled(logger.WarnLevel) {
-		l.log.OnWarnContext(ctx).Printf(msg, args...)
+	if l.LogLevel >= gormlogger.Warn {
+		l.log.Warn().Ctx(ctx).Msgf(msg, args...)
 	}
 }
 
 // Error print error messages
 func (l *Logger) Error(ctx context.Context, msg string, args ...any) {
-	if l.LogLevel >= gormlogger.Error && l.log.Enabled(logger.ErrorLevel) {
-		l.log.OnErrorContext(ctx).Printf(msg, args...)
+	if l.LogLevel >= gormlogger.Error {
+		l.log.Error().Ctx(ctx).Msgf(msg, args...)
 	}
 }
 
@@ -91,52 +88,53 @@ func (l *Logger) Trace(ctx context.Context, begin time.Time, f func() (string, i
 	switch {
 	case err != nil &&
 		l.LogLevel >= gormlogger.Error &&
-		l.log.Enabled(logger.ErrorLevel) &&
 		(!l.IgnoreRecordNotFoundError || !errors.Is(err, gorm.ErrRecordNotFound)):
 		sql, rows := f()
-		l.log.OnErrorContext(ctx).
-			Error(err).
-			Duration("latency", elapsed).
-			HookFunc(func(e *logger.Event) {
+		l.log.Error().
+			Ctx(ctx).
+			Err(err).
+			Dur("latency", elapsed).
+			Func(func(e *zerolog.Event) {
 				if rows == -1 {
-					e.String("rows", "-")
+					e.Str("rows", "-")
 				} else {
 					e.Int64("rows", rows)
 				}
 			}).
-			String("sql", sql).
+			Str("sql", sql).
 			Msg("trace")
 	case elapsed > l.SlowThreshold &&
 		l.SlowThreshold != 0 &&
-		l.LogLevel >= gormlogger.Warn &&
-		l.log.Enabled(logger.WarnLevel):
+		l.LogLevel >= gormlogger.Warn:
 		sql, rows := f()
-		l.log.OnWarnContext(ctx).
-			Error(err).
-			String("slow!!!", fmt.Sprintf("SLOW SQL >= %v", l.SlowThreshold)).
-			Duration("latency", elapsed).
-			HookFunc(func(e *logger.Event) {
+		l.log.Warn().
+			Ctx(ctx).
+			Err(err).
+			Str("slow!!!", fmt.Sprintf("SLOW SQL >= %v", l.SlowThreshold)).
+			Dur("latency", elapsed).
+			Func(func(e *zerolog.Event) {
 				if rows == -1 {
-					e.String("rows", "-")
+					e.Str("rows", "-")
 				} else {
 					e.Int64("rows", rows)
 				}
 			}).
-			String("sql", sql).
+			Str("sql", sql).
 			Msg("trace")
-	case l.LogLevel == gormlogger.Info && l.log.Enabled(logger.InfoLevel):
+	case l.LogLevel == gormlogger.Info:
 		sql, rows := f()
-		l.log.OnInfoContext(ctx).
-			Error(err).
-			Duration("latency", elapsed).
-			HookFunc(func(e *logger.Event) {
+		l.log.Info().
+			Ctx(ctx).
+			Err(err).
+			Dur("latency", elapsed).
+			Func(func(e *zerolog.Event) {
 				if rows == -1 {
-					e.String("rows", "-")
+					e.Str("rows", "-")
 				} else {
 					e.Int64("rows", rows)
 				}
 			}).
-			String("sql", sql).
+			Str("sql", sql).
 			Msg("trace")
 	}
 }

@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/thinkgos/logger"
+	"github.com/rs/zerolog"
 )
 
 var ErrClientAborted = errors.New("request aborted: client disconnected before response was sent")
@@ -67,12 +67,14 @@ func logResponseBody(_r *http.Request) bool {
 	return true
 }
 
-// Logging returns a gin.HandlerFunc (middleware) that logs requests using uber-go/logger.
+// Logging returns a middleware that logs requests using zerolog.
 //
-// Requests with errors are logged using logger.Error().
-// Requests without errors are logged using logger.Info().
-func Logging(log *logger.Log, opts ...Option) func(http.Handler) http.Handler {
-	log.AddCallerSkipPackage("github.com/thinkgos/http-contrib")
+// Requests with errors are logged using Error level.
+// Requests without errors are logged using Info level.
+//
+// NOTICE: caller "file" 字段的跳过包(如本包)由调用方在 logx.CallerHook 上统一配置,
+// 本函数不再修改 caller 配置.
+func Logging(log zerolog.Logger, opts ...Option) func(http.Handler) http.Handler {
 	opt := Config{
 		skipLogging:           func(r *http.Request) bool { return false },
 		enableLogBody:         &atomic.Bool{},
@@ -89,7 +91,8 @@ func Logging(log *logger.Log, opts ...Option) func(http.Handler) http.Handler {
 	}
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			r = r.WithContext(context.WithValue(r.Context(), ctxKeyLogField{}, &[]logger.Field{}))
+			l := log.With().Logger()
+			r = r.WithContext(l.WithContext(r.Context()))
 
 			ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
 			respBody := &strings.Builder{}
@@ -127,20 +130,36 @@ func Logging(log *logger.Log, opts ...Option) func(http.Handler) http.Handler {
 
 					httpRequest, _ := httputil.DumpRequest(r, false)
 					if brokenPipe {
-						log.OnErrorContext(r.Context()).
-							Any("error", err).
-							ByteString("request", httpRequest).
+						zerolog.Ctx(r.Context()).
+							Error().
+							Ctx(r.Context()).
+							Func(func(e *zerolog.Event) {
+								if e1, ok := err.(error); ok {
+									e.AnErr("error", e1)
+								} else {
+									e.Interface("error", err)
+								}
+							}).
+							Str("request", string(httpRequest)).
 							Msg(r.URL.Path)
 						return
 					}
-					log.OnErrorContext(r.Context()).
-						Any("error", err).
-						ByteString("request", httpRequest).
-						HookFuncIf(opt.stack, func(e *logger.Event) {
-							e.ByteString("stack", debug.Stack())
+					zerolog.Ctx(r.Context()).
+						Error().
+						Ctx(r.Context()).
+						Func(func(e *zerolog.Event) {
+							if e1, ok := err.(error); ok {
+								e.AnErr("error", e1)
+							} else {
+								e.Interface("error", err)
+							}
+							if opt.stack {
+								e.Str("stack", string(debug.Stack()))
+							}
 						}).
+						Str("request", string(httpRequest)).
 						Msg("recovery from panic")
-					w.WriteHeader(http.StatusInternalServerError)
+					ww.WriteHeader(http.StatusInternalServerError)
 				}
 
 				// logging
@@ -148,28 +167,30 @@ func Logging(log *logger.Log, opts ...Option) func(http.Handler) http.Handler {
 					return
 				}
 				statusCode := ww.Status()
-				var level = logger.InfoLevel
+				var level = zerolog.InfoLevel
 				switch {
 				case statusCode >= http.StatusInternalServerError:
-					level = logger.ErrorLevel
+					level = zerolog.ErrorLevel
 				case statusCode == http.StatusTooManyRequests:
-					level = logger.InfoLevel
+					level = zerolog.InfoLevel
 				case statusCode >= http.StatusBadRequest:
-					level = logger.WarnLevel
+					level = zerolog.WarnLevel
 				case r.Method == "OPTIONS":
-					level = logger.DebugLevel
+					level = zerolog.DebugLevel
 				}
 
-				log.OnLevelContext(r.Context(), level).
+				zerolog.Ctx(r.Context()).
+					WithLevel(level).
+					Ctx(r.Context()).
 					Int("status", ww.Status()).
-					String("method", r.Method).
-					String("path", path).
-					String("query", query).
-					String("user-agent", r.UserAgent()).
-					Duration("latency", time.Since(start)).
-					HookFunc(func(e *logger.Event) {
+					Str("method", r.Method).
+					Str("path", path).
+					Str("query", query).
+					Str("user-agent", r.UserAgent()).
+					Dur("latency", time.Since(start)).
+					Func(func(e *zerolog.Event) {
 						if len(opt.logRequestHeaders) > 0 {
-							e.Dict("request.headers", extractHeaderField(r.Header, opt.logRequestHeaders)...)
+							e.Dict("request.headers", extractHeaderField(e, r.Header, opt.logRequestHeaders))
 						}
 						if hasLogRequestBody {
 							n, _ := io.Copy(io.Discard, r.Body)
@@ -177,26 +198,25 @@ func Logging(log *logger.Log, opts ...Option) func(http.Handler) http.Handler {
 								e.Int64("request.unread-bytes", n)
 							}
 							if opt.logBodyLimit <= 0 || reqBody.Len() <= opt.logBodyLimit {
-								e.String("request.body", reqBody.String())
+								e.Str("request.body", reqBody.String())
 							} else {
-								e.String("request.body", reqBody.String()[:opt.logBodyLimit]+"... [trimmed]")
+								e.Str("request.body", reqBody.String()[:opt.logBodyLimit]+"... [trimmed]")
 							}
 						}
 						if len(opt.logResponseHeaders) > 0 {
-							e.Dict("response.headers", extractHeaderField(w.Header(), opt.logResponseHeaders)...)
+							e.Dict("response.headers", extractHeaderField(e, w.Header(), opt.logResponseHeaders))
 						}
 						if hasLogResponseBody {
 							if opt.logBodyLimit <= 0 || ww.BytesWritten() <= opt.logBodyLimit {
-								e.String("response.body", respBody.String())
+								e.Str("response.body", respBody.String())
 							} else {
-								e.String("response.body", respBody.String()[:opt.logBodyLimit]+"... [trimmed]")
+								e.Str("response.body", respBody.String()[:opt.logBodyLimit]+"... [trimmed]")
 							}
 						}
 						if err := r.Context().Err(); errors.Is(err, context.Canceled) {
-							e.Error(ErrClientAborted).String("error.type", "ClientAborted")
+							e.Err(ErrClientAborted).Str("error.type", "ClientAborted")
 						}
 					}).
-					Fields(getFields(r.Context())...).
 					Msg("logging")
 			}()
 			next.ServeHTTP(ww, r)
@@ -204,15 +224,30 @@ func Logging(log *logger.Log, opts ...Option) func(http.Handler) http.Handler {
 	}
 }
 
-func extractHeaderField(header http.Header, headers []string) []logger.Field {
-	attrs := make([]logger.Field, 0, len(headers))
+// extractHeaderField 抽取请求/响应头为嵌套 dict 字段.
+func extractHeaderField(e *zerolog.Event, header http.Header, headers []string) *zerolog.Event {
+	dict := e.CreateDict()
 	for _, h := range headers {
 		vals := header.Values(h)
 		if len(vals) == 1 {
-			attrs = append(attrs, logger.String(h, vals[0]))
+			dict.Str(h, vals[0])
 		} else if len(vals) > 1 {
-			attrs = append(attrs, logger.Any(h, vals))
+			dict.Strs(h, vals)
 		}
 	}
-	return attrs
+	return dict
+}
+
+func Ctx(ctx context.Context) *zerolog.Logger {
+	return zerolog.Ctx(ctx)
+}
+
+// AttachError attaches the error attribute on the request log.
+func AttachError(ctx context.Context, err error) error {
+	if err != nil {
+		zerolog.Ctx(ctx).UpdateContext(func(c zerolog.Context) zerolog.Context {
+			return c.AnErr("error", err)
+		})
+	}
+	return err
 }
